@@ -1,71 +1,94 @@
-import re, random
-from urlparse import urlparse
+# PMS plugin framework
+import re, string, datetime
 from PMS import *
+from PMS.Objects import *
+from PMS.Shortcuts import *
+##################################################################################################ABC
+PLUGIN_PREFIX     = "/video/ABC_US"
 
-####################################################################################################
+ABC_URL                     = "http://abcfamily.go.com/"
+ABC_FULL_EPISODES_SHOW_LIST = "http://abcfamily.go.com/watch"
 
-PLUGIN_PREFIX     = "/video/NBC"
-
-NBC_URL                     = "http://www.nbc.com"
-NBC_FULL_EPISODES_SHOW_LIST = "http://www.nbc.com/Video/library/full-episodes/"
-NBC_URL_NEWEST              = "http://www.nbc.com/video/library"
-NBC_URL_MV                  = "http://www.nbc.com/video/library/categories/most-viewed/"
-NBC_URL_TR                  = "http://www.nbc.com/video/library/categories/top-rated"
-PLUGIN_ARTWORK              = 'art-default.jpg'
-PLUGIN_ICON_DEFAULT         = 'icon-default.jpg'
-CACHE_INTERVAL              = 3600
+ABC_FEED                    = "http://www.abcfamily.com/fod/"
 DEBUG                       = False
+abcart                      ="art-default.jpg"
+abcthumb                    ="icon-default.jpg"
 
 ####################################################################################################
 
 def Start():
-  Plugin.AddPrefixHandler(PLUGIN_PREFIX, MainMenu, "NBC", PLUGIN_ICON_DEFAULT, PLUGIN_ARTWORK)
+  Plugin.AddPrefixHandler(PLUGIN_PREFIX, MainMenu, "ABCFamily","icon-default.jpg", "art-default.jpg")
   Plugin.AddViewGroup("InfoList", viewMode="InfoList", mediaType="items")
   
-  MediaContainer.art       = R(PLUGIN_ARTWORK)
-  DirectoryItem.thumb = R(PLUGIN_ICON_DEFAULT)
-  WebVideoItem.thumb = R(PLUGIN_ICON_DEFAULT)
-
+  MediaContainer.art        =R(abcart)
+  DirectoryItem.thumb       =R(abcthumb)
+  RTMPVideoItem.thumb       =R(abcthumb)
+  
 
 ####################################################################################################
-def MainMenu():
-    dir = MediaContainer(mediaType='video') 
-    dir.Append(Function(DirectoryItem(VideoPage, "Newest"), pageUrl = NBC_URL_NEWEST))
-    dir.Append(Function(DirectoryItem(VideoPage, "Most Viewed"), pageUrl = NBC_URL_MV))
-    dir.Append(Function(DirectoryItem(VideoPage, "Top Rated"), pageUrl = NBC_URL_TR))
-    dir.Append(Function(DirectoryItem(all_shows, "All Shows"), pageUrl = NBC_FULL_EPISODES_SHOW_LIST))
-    return dir
+#def MainMenu():
+#    dir = MediaContainer(mediaType='video') 
+#    dir.Append(Function(DirectoryItem(all_shows, "All Shows"), pageUrl = ABC_FULL_EPISODES_SHOW_LIST))
+#    return dir
     
 ####################################################################################################
-def all_shows(sender, pageUrl):
-    dir = MediaContainer(title2=sender.itemTitle)
+def MainMenu():
+    pageUrl=ABC_FULL_EPISODES_SHOW_LIST
+    dir = MediaContainer(mediaType='video')
     content = XML.ElementFromURL(pageUrl, True)
-    for item in content.xpath('//div[@class="item-list group-full-eps"]//div/ul/ul/li'):
-      titleUrl = item.xpath("a")[0].get('href')
-      image = item.xpath("a/img")[0].get('src')
-      title = item.xpath("a")[0].get('title')
-      art=PLUGIN_ARTWORK
-      showart=titleUrl.replace("/video","")
-      if showart.count("classic-tv") == 0:
-        showart=showart + "/take_it/downloads/wallpaper/1024x768_1.jpg"
-        string1 = "/categories*"
-
-      dir.Append(Function(DirectoryItem(VideoPage, title), pageUrl = titleUrl))
+    for item in content.xpath('//div[@id="show_list_data"]//ul[@class="show_listing_item"]'):
+      title=item.xpath("li[@class='show_listing_title']")[0].text
+      titleUrl = item.xpath("li[@class='show_listing_url']")[0].text
+      thumb= item.xpath("li[@class='show_listing_thumb']")[0].text
+      if thumb=="http://ll.static.abc.com/c/shows/" or thumb=="None":
+        thumb="icon-default.jpg"
+      if titleUrl.count("/clip/") ==0:
+        Log(titleUrl)
+        Log(thumb)
+        dir.Append(Function(DirectoryItem(VideoPage, title), pageUrl = titleUrl))
     return dir 
 
 ####################################################################################################
 def VideoPage(sender, pageUrl):
     dir = MediaContainer(title2=sender.itemTitle)
-    content = XML.ElementFromURL(pageUrl, True)
-    for item2 in content.xpath('//div[@class="group-list"]//ul/li'):
-        vidUrl_t = item2.xpath("a")[0].get('href')
-        
-        if vidUrl_t.count("http://") == 0:
-          vidUrl=NBC_URL+vidUrl_t
-        art = NBC_URL + vidUrl_t + "images/backgrounds/header-bg.png"
-        
-        title2 = item2.xpath(".//em")[0].text
-        title2 = title2 + " " + item2.xpath("a")[0].get('title')
-        if vidUrl_t.count("http://") == 0:
-          dir.Append(WebVideoItem(vidUrl, title2))
+    Log("Hello")
+    Log(pageUrl)
+    page = HTTP.Request(pageUrl)
+    key1=re.compile('showLongCarouselTabbedViewPL5515994\.setValues\(1,\'PL5515994\',\'(.+?),').findall(page)[0]
+    Log("key1: ")
+    Log(key1)
+    eplink1="http://abcfamily.go.com/vp2/showlongformcarouselimagelist/feed/" + key1
+    eplink1=eplink1 + "/start/0/limit/100/t/PL5515994/c/showFEPCarousel/pg/false?rand=05040004_3"
+
+
+    dir=getnfo(dir,key1,eplink1)
+      
     return dir
+####################################################################################################
+def getnfo(dir, key1, eplink1):
+    
+      content2=XML.ElementFromURL(eplink1, True)
+      for item3 in content2.xpath('//div[@class="full"]'):
+        Log(item3)
+        vidUrl=item3.xpath('div/div/div[@class="thumb_img"]/a')[0].get('href')
+        thumb=item3.xpath('div/div/div[@class="thumb_img"]/a/img')[0].get('src')
+        title=item3.xpath('div/div[@class="ep_title"]/a')[0].text
+        id=vidUrl.split('/')[-2]
+        idUrl="http://cdn.abc.go.com/vp2/ws/s/contents/2000/utils/mov/13/9024/"+id+"/432?v=05040004_3"
+        
+        content3=XML.ElementFromURL(idUrl,False)
+        for item4 in content3.xpath('//videos'):
+          trueUrl=item4.xpath('video[@bitrate="1000"]')[0].get('src')
+          clip=trueUrl.replace("mp4:/","")
+          player="http://ll.media.abc.com/"
+          Log(trueUrl)
+
+          Log(thumb)
+          Log(title)
+        dir.Append(RTMPVideoItem(player, clip, title=title, thumb=thumb))
+      return dir
+
+
+
+
+
